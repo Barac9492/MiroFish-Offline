@@ -1019,22 +1019,31 @@ def create_model(config: Dict[str, Any], use_boost: bool = False):
     if not llm_model:
         llm_model = config.get("llm_model", "gpt-4o-mini")
     
-    # 设置 camel-ai 所需的环境变量
-    if llm_api_key:
-        os.environ["OPENAI_API_KEY"] = llm_api_key
-    
-    if not os.environ.get("OPENAI_API_KEY"):
-        raise ValueError("缺少 API Key 配置，请在项目根目录 .env 文件中设置 LLM_API_KEY")
-    
-    if llm_base_url:
-        os.environ["OPENAI_API_BASE_URL"] = llm_base_url
-    
-    print(f"{config_label} model={llm_model}, base_url={llm_base_url[:40] if llm_base_url else '默认'}...")
-    
-    return ModelFactory.create(
-        model_platform=ModelPlatformType.OPENAI,
-        model_type=llm_model,
-    )
+    # Detect Anthropic models
+    is_anthropic = llm_model.startswith("claude")
+
+    if is_anthropic:
+        if llm_api_key:
+            os.environ["ANTHROPIC_API_KEY"] = llm_api_key
+        if not os.environ.get("ANTHROPIC_API_KEY"):
+            raise ValueError("缺少 API Key 配置，请在项目根目录 .env 文件中设置 LLM_API_KEY")
+        print(f"{config_label} (Anthropic) model={llm_model}")
+        return ModelFactory.create(
+            model_platform=ModelPlatformType.ANTHROPIC,
+            model_type=llm_model,
+        )
+    else:
+        if llm_api_key:
+            os.environ["OPENAI_API_KEY"] = llm_api_key
+        if not os.environ.get("OPENAI_API_KEY"):
+            raise ValueError("缺少 API Key 配置，请在项目根目录 .env 文件中设置 LLM_API_KEY")
+        if llm_base_url:
+            os.environ["OPENAI_API_BASE_URL"] = llm_base_url
+        print(f"{config_label} model={llm_model}, base_url={llm_base_url[:40] if llm_base_url else '默认'}...")
+        return ModelFactory.create(
+            model_platform=ModelPlatformType.OPENAI,
+            model_type=llm_model,
+        )
 
 
 def get_active_agents_for_round(

@@ -1,7 +1,7 @@
 """
 LLM客户端封装
-统一使用OpenAI格式调用
-支持 Ollama num_ctx 参数防止 prompt 被截断
+支持 OpenAI 格式 (Ollama / OpenAI) 和 Anthropic Claude
+根据模型名称自动选择后端
 """
 
 import json
@@ -14,7 +14,7 @@ from ..config import Config
 
 
 class LLMClient:
-    """LLM客户端"""
+    """LLM客户端 — 支持 OpenAI-compatible 和 Anthropic"""
 
     def __init__(
         self,
@@ -30,19 +30,40 @@ class LLMClient:
         if not self.api_key:
             raise ValueError("LLM_API_KEY 未配置")
 
-        self.client = OpenAI(
-            api_key=self.api_key,
-            base_url=self.base_url,
-            timeout=timeout,
-        )
+        self._timeout = timeout
+        self._anthropic_client = None
+        self._openai_client = None
 
         # Ollama context window size — prevents prompt truncation.
-        # Read from env OLLAMA_NUM_CTX, default 8192 (Ollama default is only 2048).
         self._num_ctx = int(os.environ.get('OLLAMA_NUM_CTX', '8192'))
+
+    def _is_anthropic(self) -> bool:
+        """Check if we're using an Anthropic Claude model."""
+        return (self.model or '').startswith('claude')
 
     def _is_ollama(self) -> bool:
         """Check if we're talking to an Ollama server."""
         return '11434' in (self.base_url or '')
+
+    def _get_anthropic_client(self):
+        """Lazy-init Anthropic client."""
+        if self._anthropic_client is None:
+            import anthropic
+            self._anthropic_client = anthropic.Anthropic(
+                api_key=self.api_key,
+                timeout=self._timeout,
+            )
+        return self._anthropic_client
+
+    def _get_openai_client(self):
+        """Lazy-init OpenAI client."""
+        if self._openai_client is None:
+            self._openai_client = OpenAI(
+                api_key=self.api_key,
+                base_url=self.base_url,
+                timeout=self._timeout,
+            )
+        return self._openai_client
 
     def chat(
         self,
@@ -63,6 +84,64 @@ class LLMClient:
         Returns:
             模型响应文本
         """
+        if self._is_anthropic():
+            return self._chat_anthropic(messages, temperature, max_tokens, response_format)
+        return self._chat_openai(messages, temperature, max_tokens, response_format)
+
+    def _chat_anthropic(
+        self,
+        messages: List[Dict[str, str]],
+        temperature: float,
+        max_tokens: int,
+        response_format: Optional[Dict] = None
+    ) -> str:
+        """Send chat request via Anthropic SDK."""
+        client = self._get_anthropic_client()
+
+        # Extract system message (Anthropic uses a separate system param)
+        system = None
+        user_messages = []
+        for msg in messages:
+            if msg["role"] == "system":
+                system = (system + "\n\n" + msg["content"]) if system else msg["content"]
+            else:
+                user_messages.append(msg)
+
+        # If response_format is JSON, add instruction to system prompt
+        if response_format and response_format.get("type") == "json_object":
+            json_instruction = "\n\nIMPORTANT: You must respond with valid JSON only. No markdown, no explanation, just the JSON object."
+            system = (system + json_instruction) if system else json_instruction
+
+        kwargs = {
+            "model": self.model,
+            "messages": user_messages,
+            "temperature": temperature,
+            "max_tokens": max_tokens,
+        }
+        if system:
+            kwargs["system"] = system
+
+        response = client.messages.create(**kwargs)
+
+        content = ""
+        for block in response.content:
+            if block.type == "text":
+                content += block.text
+
+        # Remove <think> tags from some models
+        content = re.sub(r'<think>[\s\S]*?</think>', '', content).strip()
+        return content
+
+    def _chat_openai(
+        self,
+        messages: List[Dict[str, str]],
+        temperature: float,
+        max_tokens: int,
+        response_format: Optional[Dict] = None
+    ) -> str:
+        """Send chat request via OpenAI SDK."""
+        client = self._get_openai_client()
+
         kwargs = {
             "model": self.model,
             "messages": messages,
@@ -79,9 +158,9 @@ class LLMClient:
                 "options": {"num_ctx": self._num_ctx}
             }
 
-        response = self.client.chat.completions.create(**kwargs)
+        response = client.chat.completions.create(**kwargs)
         content = response.choices[0].message.content
-        # 部分模型（如MiniMax M2.5）会在content中包含<think>思考内容，需要移除
+        # 部分模型会在content中包含<think>思考内容，需要移除
         content = re.sub(r'<think>[\s\S]*?</think>', '', content).strip()
         return content
 

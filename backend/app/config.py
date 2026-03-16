@@ -69,6 +69,14 @@ class Config:
     REPORT_AGENT_MAX_REFLECTION_ROUNDS = int(os.environ.get('REPORT_AGENT_MAX_REFLECTION_ROUNDS', '2'))
     REPORT_AGENT_TEMPERATURE = float(os.environ.get('REPORT_AGENT_TEMPERATURE', '0.5'))
 
+    # Prediction Market配置
+    POLYMARKET_GAMMA_URL = os.environ.get('POLYMARKET_GAMMA_URL', 'https://gamma-api.polymarket.com')
+    PREDICTION_DEFAULT_AGENTS = int(os.environ.get('PREDICTION_DEFAULT_AGENTS', '50'))
+    PREDICTION_DEFAULT_ROUNDS = int(os.environ.get('PREDICTION_DEFAULT_ROUNDS', '5'))
+    PREDICTION_SIGNAL_THRESHOLD = float(os.environ.get('PREDICTION_SIGNAL_THRESHOLD', '0.10'))
+    PREDICTION_TRADE_ENABLED = os.environ.get('PREDICTION_TRADE_ENABLED', 'false').lower() == 'true'
+    PREDICTION_DATA_DIR = os.path.join(os.path.dirname(__file__), '../uploads/predictions')
+
     @classmethod
     def validate(cls):
         """验证必要配置"""

@@ -1009,10 +1009,10 @@ def create_model(config: Dict[str, Any], use_boost: bool = False):
         llm_model = boost_model or os.environ.get("LLM_MODEL_NAME", "")
         config_label = "[加速LLM]"
     else:
-        # 使用通用配置
-        llm_api_key = os.environ.get("LLM_API_KEY", "")
-        llm_base_url = os.environ.get("LLM_BASE_URL", "")
-        llm_model = os.environ.get("LLM_MODEL_NAME", "")
+        # Use simulation-specific LLM if configured, else fall back to main LLM
+        llm_api_key = os.environ.get("SIMULATION_LLM_API_KEY", "") or os.environ.get("LLM_API_KEY", "")
+        llm_base_url = os.environ.get("SIMULATION_LLM_BASE_URL", "") or os.environ.get("LLM_BASE_URL", "")
+        llm_model = os.environ.get("SIMULATION_LLM_MODEL", "") or os.environ.get("LLM_MODEL_NAME", "")
         config_label = "[通用LLM]"
     
     # 如果 .env 中没有模型名，则使用 config 作为备用

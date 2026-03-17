@@ -77,6 +77,12 @@ class Config:
     PREDICTION_TRADE_ENABLED = os.environ.get('PREDICTION_TRADE_ENABLED', 'false').lower() == 'true'
     PREDICTION_DATA_DIR = os.path.join(os.path.dirname(__file__), '../uploads/predictions')
 
+    # Simulation LLM override — OASIS/camel-ai needs OpenAI-compatible API
+    # When using Claude for main LLM, set these to point to Ollama for simulations
+    SIMULATION_LLM_API_KEY = os.environ.get('SIMULATION_LLM_API_KEY', '')
+    SIMULATION_LLM_BASE_URL = os.environ.get('SIMULATION_LLM_BASE_URL', '')
+    SIMULATION_LLM_MODEL = os.environ.get('SIMULATION_LLM_MODEL', '')
+
     @classmethod
     def validate(cls):
         """验证必要配置"""

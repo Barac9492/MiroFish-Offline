@@ -2,9 +2,14 @@
 Tests for app.storage.sqlite_store.SQLiteStore
 """
 
+import pytest
+from unittest.mock import patch, MagicMock
+
 from app.models.backtest import BacktestRun, BacktestResult, BacktestRunStatus
 from app.models.position import PaperOrder, PaperPosition, PositionStatus
+from app.storage.sqlite_store import StorageError
 from sqlalchemy import text
+from sqlalchemy.exc import OperationalError
 
 
 class TestSaveAndGetBacktestRun:
@@ -266,6 +271,41 @@ class TestBacktestResultCategoryColumns:
         assert len(results) == 1
         assert results[0].category == "sports"
         assert results[0].confidence_tier == "HIGH"
+
+
+class TestDiskFullErrorHandling:
+
+    def test_disk_full_raises_storage_error(self, sqlite_store):
+        """Disk I/O errors during writes raise StorageError."""
+        run = BacktestRun(id="bt_disk_test")
+
+        with patch.object(sqlite_store.engine, "connect") as mock_connect:
+            mock_conn = MagicMock()
+            mock_conn.__enter__ = MagicMock(return_value=mock_conn)
+            mock_conn.__exit__ = MagicMock(return_value=False)
+            mock_conn.execute.side_effect = OperationalError(
+                "INSERT", {}, Exception("disk I/O error")
+            )
+            mock_connect.return_value = mock_conn
+
+            with pytest.raises(StorageError, match="Disk I/O error"):
+                sqlite_store.save_backtest_run(run)
+
+    def test_non_disk_error_propagates_as_operational(self, sqlite_store):
+        """Non-disk OperationalErrors propagate unchanged."""
+        run = BacktestRun(id="bt_other_err")
+
+        with patch.object(sqlite_store.engine, "connect") as mock_connect:
+            mock_conn = MagicMock()
+            mock_conn.__enter__ = MagicMock(return_value=mock_conn)
+            mock_conn.__exit__ = MagicMock(return_value=False)
+            mock_conn.execute.side_effect = OperationalError(
+                "INSERT", {}, Exception("table not found")
+            )
+            mock_connect.return_value = mock_conn
+
+            with pytest.raises(OperationalError):
+                sqlite_store.save_backtest_run(run)
 
 
 class TestWALMode:

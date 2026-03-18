@@ -83,6 +83,8 @@ import uuid
 from datetime import datetime
 from typing import Any, Dict, List, Optional
 
+from sqlalchemy.exc import OperationalError
+
 from sqlalchemy import (
     Column,
     Float,
@@ -98,9 +100,15 @@ from sqlalchemy import (
 from sqlalchemy.engine import Engine
 
 from ..models.backtest import BacktestResult, BacktestRun
+from ..models.prediction import PredictionRun, PredictionRunStatus
 from ..models.position import PaperOrder, PaperPosition
 
 logger = logging.getLogger(__name__)
+
+
+class StorageError(Exception):
+    """Raised when a storage operation fails (disk full, I/O error, etc.)."""
+    pass
 
 metadata = MetaData()
 
@@ -155,6 +163,24 @@ calibration_profiles = Table(
     UniqueConstraint("run_id", "category", name="uq_run_category"),
 )
 
+prediction_runs = Table(
+    "prediction_runs",
+    metadata,
+    Column("run_id", String, primary_key=True),
+    Column("status", String),
+    Column("created_at", String),
+    Column("updated_at", String),
+    Column("market", String),  # JSON
+    Column("project_id", String),
+    Column("graph_id", String),
+    Column("simulation_id", String),
+    Column("scenario", String),  # JSON
+    Column("sentiment", String),  # JSON
+    Column("signal", String),  # JSON
+    Column("error", String),
+    Column("progress_message", String),
+)
+
 paper_orders = Table(
     "paper_orders",
     metadata,
@@ -206,6 +232,24 @@ class SQLiteStore:
         self._migrate_add_columns()
         logger.info("SQLiteStore initialized: %s (WAL mode)", db_path)
 
+    def _safe_write(self, operation: str, fn):
+        """Execute a write operation with disk-full error handling.
+
+        Args:
+            operation: Human-readable description for error messages
+            fn: Callable that receives a connection and performs the write
+        """
+        try:
+            with self.engine.connect() as conn:
+                fn(conn)
+                conn.commit()
+        except OperationalError as e:
+            err_msg = str(e).lower()
+            if "disk" in err_msg or "i/o" in err_msg or "full" in err_msg or "readonly" in err_msg:
+                logger.error(f"Storage I/O error during {operation}: {e}")
+                raise StorageError(f"Disk I/O error during {operation}: {e}") from e
+            raise
+
     def _migrate_add_columns(self):
         """Add new columns to existing tables (idempotent)."""
         migrations = [
@@ -226,12 +270,9 @@ class SQLiteStore:
         d = run.to_dict()
         d["config"] = json.dumps(d["config"]) if d["config"] else None
         d["metrics"] = json.dumps(d["metrics"]) if d["metrics"] else None
-        with self.engine.connect() as conn:
-            conn.execute(
-                backtest_runs.insert().prefix_with("OR REPLACE"),
-                d,
-            )
-            conn.commit()
+        self._safe_write("save_backtest_run", lambda conn: conn.execute(
+            backtest_runs.insert().prefix_with("OR REPLACE"), d,
+        ))
 
     def get_backtest_run(self, run_id: str) -> Optional[BacktestRun]:
         with self.engine.connect() as conn:
@@ -266,11 +307,9 @@ class SQLiteStore:
                 updates[key] = json.dumps(value)
             else:
                 updates[key] = value
-        with self.engine.connect() as conn:
-            conn.execute(
-                backtest_runs.update().where(backtest_runs.c.id == run_id).values(**updates)
-            )
-            conn.commit()
+        self._safe_write("update_backtest_run", lambda conn: conn.execute(
+            backtest_runs.update().where(backtest_runs.c.id == run_id).values(**updates)
+        ))
 
     @staticmethod
     def _row_to_backtest_run(row: Any) -> BacktestRun:
@@ -282,12 +321,10 @@ class SQLiteStore:
     # ── Backtest Results ─────────────────────────────────────────────
 
     def save_backtest_result(self, result: BacktestResult) -> None:
-        with self.engine.connect() as conn:
-            conn.execute(
-                backtest_results.insert().prefix_with("OR REPLACE"),
-                result.to_dict(),
-            )
-            conn.commit()
+        d = result.to_dict()
+        self._safe_write("save_backtest_result", lambda conn: conn.execute(
+            backtest_results.insert().prefix_with("OR REPLACE"), d,
+        ))
 
     def get_results_by_run(self, run_id: str) -> List[BacktestResult]:
         with self.engine.connect() as conn:
@@ -308,12 +345,10 @@ class SQLiteStore:
     # ── Paper Orders ─────────────────────────────────────────────────
 
     def save_paper_order(self, order: PaperOrder) -> None:
-        with self.engine.connect() as conn:
-            conn.execute(
-                paper_orders.insert().prefix_with("OR REPLACE"),
-                order.to_dict(),
-            )
-            conn.commit()
+        d = order.to_dict()
+        self._safe_write("save_paper_order", lambda conn: conn.execute(
+            paper_orders.insert().prefix_with("OR REPLACE"), d,
+        ))
 
     def get_orders(self) -> List[PaperOrder]:
         with self.engine.connect() as conn:
@@ -323,12 +358,10 @@ class SQLiteStore:
     # ── Paper Positions ──────────────────────────────────────────────
 
     def save_paper_position(self, position: PaperPosition) -> None:
-        with self.engine.connect() as conn:
-            conn.execute(
-                paper_positions.insert().prefix_with("OR REPLACE"),
-                position.to_dict(),
-            )
-            conn.commit()
+        d = position.to_dict()
+        self._safe_write("save_paper_position", lambda conn: conn.execute(
+            paper_positions.insert().prefix_with("OR REPLACE"), d,
+        ))
 
     def get_positions(self) -> List[PaperPosition]:
         with self.engine.connect() as conn:
@@ -347,16 +380,14 @@ class SQLiteStore:
 
     def save_market_category(self, market_id: str, category: str) -> None:
         """Cache a market's category classification."""
-        with self.engine.connect() as conn:
-            conn.execute(
-                market_categories.insert().prefix_with("OR REPLACE"),
-                {
-                    "market_id": market_id,
-                    "category": category,
-                    "classified_at": datetime.now().isoformat(),
-                },
-            )
-            conn.commit()
+        row = {
+            "market_id": market_id,
+            "category": category,
+            "classified_at": datetime.now().isoformat(),
+        }
+        self._safe_write("save_market_category", lambda conn: conn.execute(
+            market_categories.insert().prefix_with("OR REPLACE"), row,
+        ))
 
     # ── Calibration Profiles ──────────────────────────────────────
 
@@ -364,19 +395,17 @@ class SQLiteStore:
         self, run_id: str, category: str, offset: float, sample_size: int
     ) -> None:
         """Save a per-category calibration offset for a backtest run."""
-        with self.engine.connect() as conn:
-            conn.execute(
-                calibration_profiles.insert().prefix_with("OR REPLACE"),
-                {
-                    "id": f"cp_{uuid.uuid4().hex[:12]}",
-                    "run_id": run_id,
-                    "category": category,
-                    "offset": offset,
-                    "sample_size": sample_size,
-                    "created_at": datetime.now().isoformat(),
-                },
-            )
-            conn.commit()
+        row = {
+            "id": f"cp_{uuid.uuid4().hex[:12]}",
+            "run_id": run_id,
+            "category": category,
+            "offset": offset,
+            "sample_size": sample_size,
+            "created_at": datetime.now().isoformat(),
+        }
+        self._safe_write("save_calibration_profile", lambda conn: conn.execute(
+            calibration_profiles.insert().prefix_with("OR REPLACE"), row,
+        ))
 
     def load_calibration_profiles(self, run_id: str) -> Dict[str, Dict[str, Any]]:
         """Load all category offsets for a run. Returns {category: {offset, sample_size}}."""
@@ -399,3 +428,55 @@ class SQLiteStore:
                 .limit(1)
             ).mappings().first()
         return row["id"] if row else None
+
+    # ── Prediction Runs ───────────────────────────────────────────
+
+    def save_prediction_run(self, run: PredictionRun) -> None:
+        """Save or update a prediction run."""
+        d = run.to_dict()
+        # Serialize nested dicts as JSON
+        for key in ("market", "scenario", "sentiment", "signal"):
+            if d.get(key) is not None:
+                d[key] = json.dumps(d[key])
+        self._safe_write("save_prediction_run", lambda conn: conn.execute(
+            prediction_runs.insert().prefix_with("OR REPLACE"), d,
+        ))
+
+    def get_prediction_run(self, run_id: str) -> Optional[PredictionRun]:
+        """Get a prediction run by ID."""
+        with self.engine.connect() as conn:
+            row = conn.execute(
+                prediction_runs.select().where(prediction_runs.c.run_id == run_id)
+            ).mappings().first()
+        if row is None:
+            return None
+        return self._row_to_prediction_run(row)
+
+    def list_prediction_runs(self, limit: int = 50) -> List[PredictionRun]:
+        """List prediction runs, most recent first."""
+        with self.engine.connect() as conn:
+            rows = conn.execute(
+                prediction_runs.select()
+                .order_by(prediction_runs.c.created_at.desc())
+                .limit(limit)
+            ).mappings().all()
+        return [self._row_to_prediction_run(r) for r in rows]
+
+    def delete_prediction_run(self, run_id: str) -> bool:
+        """Delete a prediction run. Returns True if deleted."""
+        deleted = []
+        def _do_delete(conn):
+            result = conn.execute(
+                prediction_runs.delete().where(prediction_runs.c.run_id == run_id)
+            )
+            deleted.append(result.rowcount > 0)
+        self._safe_write("delete_prediction_run", _do_delete)
+        return deleted[0] if deleted else False
+
+    @staticmethod
+    def _row_to_prediction_run(row: Any) -> PredictionRun:
+        d = dict(row)
+        for key in ("market", "scenario", "sentiment", "signal"):
+            if d.get(key):
+                d[key] = json.loads(d[key])
+        return PredictionRun.from_dict(d)

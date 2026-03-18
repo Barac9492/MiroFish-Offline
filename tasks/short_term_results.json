@@ -1,0 +1,167 @@
+[
+  {
+    "title": "Will SC Braga win on 2026-03-18?",
+    "days_left": 0,
+    "market_p": 0.655,
+    "sim_p": 0.6031,
+    "direction": "HOLD",
+    "edge": -0.0519,
+    "confidence": 0.5,
+    "end_date": "2026-03-18",
+    "condition_id": "0x68b5ff4e05e14d3ef514ba81ffe5008017839003f8afff2899c727782cf92019"
+  },
+  {
+    "title": "Will Tottenham Hotspur FC win on 2026-03-18?",
+    "days_left": 0,
+    "market_p": 0.385,
+    "sim_p": 0.4014,
+    "direction": "HOLD",
+    "edge": 0.0164,
+    "confidence": 0.5714,
+    "end_date": "2026-03-18",
+    "condition_id": "0x476bf90da1edcc81b51d9e2437129b75caa3d184889fb851c79eaefddbb8faef"
+  },
+  {
+    "title": "Will Liverpool FC win on 2026-03-18?",
+    "days_left": 0,
+    "market_p": 0.755,
+    "sim_p": 0.7778,
+    "direction": "HOLD",
+    "edge": 0.0228,
+    "confidence": 0.7333,
+    "end_date": "2026-03-18",
+    "condition_id": "0x445bb75546efcbb18b15425b96d8f32c343998d8fae92f8964d8000534cd9947"
+  },
+  {
+    "title": "Will Cristian Sanabria win the 2026 Sucre mayoral election?",
+    "days_left": 3,
+    "market_p": 0.49,
+    "sim_p": 0.462,
+    "direction": "HOLD",
+    "edge": -0.028,
+    "confidence": 0.5625,
+    "end_date": "2026-03-22",
+    "condition_id": "0x7279b20927c8bb35b56720fbedf14b74ef45d3f1078456637e4da3aa5144e0ec"
+  },
+  {
+    "title": "Will Fluminense FC win on 2026-03-18?",
+    "days_left": 0,
+    "market_p": 0.405,
+    "sim_p": 0.4064,
+    "direction": "HOLD",
+    "edge": 0.0014,
+    "confidence": 0.5333,
+    "end_date": "2026-03-19",
+    "condition_id": "0x59191a6a01704d55076ce9c7cd9dfebde0ab1356d89410f00fbaf862333cfdf9"
+  },
+  {
+    "title": "Miami Open: Zizou Bergs vs Jenson Brooksby",
+    "days_left": 7,
+    "market_p": 0.435,
+    "sim_p": 0.5287,
+    "direction": "HOLD",
+    "edge": 0.0937,
+    "confidence": 0.625,
+    "end_date": "2026-03-25",
+    "condition_id": "0x38726daf65a61494688e0e9e64ac44e08a991ab4db057259666cc89be212d222"
+  },
+  {
+    "title": "LoL: BNK FEARX vs Team Secret Whales - Game 4 Winner",
+    "days_left": 0,
+    "market_p": 0.64,
+    "sim_p": 0.655,
+    "direction": "HOLD",
+    "edge": 0.015,
+    "confidence": 0.625,
+    "end_date": "2026-03-19",
+    "condition_id": "0x4134ccfad667c34be2f82877f1e0075417f17976425dea3e323b76f29aadf5ad"
+  },
+  {
+    "title": "Will \"Project Hail Mary\" Opening Weekend Box Office be betwe",
+    "days_left": 5,
+    "market_p": 0.022,
+    "sim_p": 0.0655,
+    "direction": "HOLD",
+    "edge": 0.0435,
+    "confidence": 0.7368,
+    "end_date": "2026-03-23",
+    "condition_id": "0x0d6b4d0f2e38f3d8702de7470ffc08c6b4214c688c53643884640977c70ba57c"
+  },
+  {
+    "title": "Will Mojtaba Khamenei tweet again on March 17?",
+    "days_left": 2,
+    "market_p": 0.12,
+    "sim_p": 0.0954,
+    "direction": "HOLD",
+    "edge": -0.0246,
+    "confidence": 0.85,
+    "end_date": "2026-03-21",
+    "condition_id": "0x613deb2291b9f62a1b6d5a2f18c49f06344206563044d6fc19955b8c7ad476c4"
+  },
+  {
+    "title": "Call of Duty: Paris Gentle Mates vs FaZe Vegas (BO5) - Call ",
+    "days_left": 2,
+    "market_p": 0.51,
+    "sim_p": 0.4124,
+    "direction": "HOLD",
+    "edge": -0.0976,
+    "confidence": 0.5556,
+    "end_date": "2026-03-21",
+    "condition_id": "0xbfae8ab04a872e713aebde73dab6e573fa764d6e0137080f1e8359943b16f8bb"
+  },
+  {
+    "title": "Will Trump say \"No Inflation\" this week? (March 22)",
+    "days_left": 3,
+    "market_p": 0.45,
+    "sim_p": 0.3316,
+    "direction": "BUY_NO",
+    "edge": -0.1184,
+    "confidence": 0.6842,
+    "end_date": "2026-03-22",
+    "condition_id": "0x7c9a12751400c3dedfd0c3d1a2b80da7c7951240190f900f04268235ca6790a4"
+  },
+  {
+    "title": "Will the Slovenian People\u2019s Party (SLS) win the second most ",
+    "days_left": 3,
+    "market_p": 0.021,
+    "sim_p": 0.0444,
+    "direction": "HOLD",
+    "edge": 0.0234,
+    "confidence": 0.75,
+    "end_date": "2026-03-22",
+    "condition_id": "0xa18ff9c4b74ac78458a9cf4c226e104ea8726c94e0e7a93d9ea6354c0758400b"
+  },
+  {
+    "title": "Counter-Strike: Vitality vs 9z - Map 1 Winner",
+    "days_left": 1,
+    "market_p": 0.825,
+    "sim_p": 0.8204,
+    "direction": "HOLD",
+    "edge": -0.0046,
+    "confidence": 0.65,
+    "end_date": "2026-03-19",
+    "condition_id": "0x03cf9101452c3b255eb7f0d2e7904107556a5458b96a3bcc99855b41f7736593"
+  },
+  {
+    "title": "Zadar: Jonas Forejtek vs Andrej Nedic",
+    "days_left": 7,
+    "market_p": 0.645,
+    "sim_p": 0.6442,
+    "direction": "HOLD",
+    "edge": -0.0008,
+    "confidence": 0.5625,
+    "end_date": "2026-03-25",
+    "condition_id": "0x2a1fa71b46fc1dcdab2da82224afbd1aa94e1a918888f5b546010a277a9a473a"
+  },
+  {
+    "title": "Will Khamenei post 80-99 posts from March 17 to March 24, 20",
+    "days_left": 6,
+    "market_p": 0.022,
+    "sim_p": 0.0379,
+    "direction": "HOLD",
+    "edge": 0.0159,
+    "confidence": 0.85,
+    "end_date": "2026-03-24",
+    "condition_id": "0x879e5046dc9a0484ba5fa858cb6485a398942efdc8ab2d6e5a19450cf354fea0"
+  }
+]

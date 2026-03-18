@@ -76,6 +76,8 @@ class BacktestResult:
     edge: float = 0.0
     brier_score: Optional[float] = None
     correct: Optional[int] = None  # 0 or 1
+    category: Optional[str] = None
+    confidence_tier: Optional[str] = None  # HIGH, MEDIUM, LOW
 
     def to_dict(self) -> Dict[str, Any]:
         return {
@@ -90,6 +92,8 @@ class BacktestResult:
             "edge": self.edge,
             "brier_score": self.brier_score,
             "correct": self.correct,
+            "category": self.category,
+            "confidence_tier": self.confidence_tier,
         }
 
     @classmethod
@@ -106,6 +110,8 @@ class BacktestResult:
             edge=data.get("edge", 0.0),
             brier_score=data.get("brier_score"),
             correct=data.get("correct"),
+            category=data.get("category"),
+            confidence_tier=data.get("confidence_tier"),
         )
 
 
@@ -121,9 +127,11 @@ class BacktestMetrics:
     calibration_rmse: float = 0.0
     markets_tested: int = 0
     avg_edge: float = 0.0
+    category_metrics: Optional[Dict[str, Any]] = None
+    confidence_tier_metrics: Optional[Dict[str, Any]] = None
 
     def to_dict(self) -> Dict[str, Any]:
-        return {
+        d = {
             "accuracy": round(self.accuracy, 4),
             "brier_score": round(self.brier_score, 4),
             "roi": round(self.roi, 4),
@@ -133,6 +141,11 @@ class BacktestMetrics:
             "markets_tested": self.markets_tested,
             "avg_edge": round(self.avg_edge, 4),
         }
+        if self.category_metrics is not None:
+            d["category_metrics"] = self.category_metrics
+        if self.confidence_tier_metrics is not None:
+            d["confidence_tier_metrics"] = self.confidence_tier_metrics
+        return d
 
     @classmethod
     def from_dict(cls, data: Dict[str, Any]) -> "BacktestMetrics":
@@ -145,4 +158,6 @@ class BacktestMetrics:
             calibration_rmse=data.get("calibration_rmse", 0.0),
             markets_tested=data.get("markets_tested", 0),
             avg_edge=data.get("avg_edge", 0.0),
+            category_metrics=data.get("category_metrics"),
+            confidence_tier_metrics=data.get("confidence_tier_metrics"),
         )

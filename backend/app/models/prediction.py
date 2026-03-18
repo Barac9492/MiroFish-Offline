@@ -80,9 +80,11 @@ class TradingSignal:
     reasoning: str
     simulated_probability: float
     market_probability: float
+    category: Optional[str] = None
+    confidence_tier: Optional[str] = None  # HIGH, MEDIUM, LOW
 
     def to_dict(self) -> Dict[str, Any]:
-        return {
+        d = {
             "direction": self.direction,
             "edge": round(self.edge, 4),
             "confidence": round(self.confidence, 4),
@@ -90,6 +92,11 @@ class TradingSignal:
             "simulated_probability": round(self.simulated_probability, 4),
             "market_probability": round(self.market_probability, 4),
         }
+        if self.category is not None:
+            d["category"] = self.category
+        if self.confidence_tier is not None:
+            d["confidence_tier"] = self.confidence_tier
+        return d
 
     @classmethod
     def from_dict(cls, data: Dict[str, Any]) -> 'TradingSignal':
@@ -100,6 +107,8 @@ class TradingSignal:
             reasoning=data['reasoning'],
             simulated_probability=data['simulated_probability'],
             market_probability=data['market_probability'],
+            category=data.get('category'),
+            confidence_tier=data.get('confidence_tier'),
         )
 
 

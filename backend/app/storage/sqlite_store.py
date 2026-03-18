@@ -28,6 +28,26 @@ Schema diagram:
     │ edge           REAL  │
     │ brier_score    REAL  │
     │ correct        INT   │
+    │ category       TEXT  │
+    │ confidence_tier TEXT │
+    └──────────────────────┘
+
+    market_categories
+    ┌──────────────────────┐
+    │ market_id    TEXT PK │
+    │ category     TEXT    │
+    │ classified_at TEXT   │
+    └──────────────────────┘
+
+    calibration_profiles
+    ┌──────────────────────┐
+    │ id           TEXT PK │
+    │ run_id       TEXT FK │──→ backtest_runs.id
+    │ category     TEXT    │
+    │ offset       REAL    │
+    │ sample_size  INT     │
+    │ created_at   TEXT    │
+    │ UNIQUE(run_id, category) │
     └──────────────────────┘
 
     paper_orders
@@ -59,6 +79,8 @@ Schema diagram:
 import json
 import logging
 import os
+import uuid
+from datetime import datetime
 from typing import Any, Dict, List, Optional
 
 from sqlalchemy import (
@@ -69,6 +91,7 @@ from sqlalchemy import (
     MetaData,
     String,
     Table,
+    UniqueConstraint,
     create_engine,
     text,
 )
@@ -108,6 +131,28 @@ backtest_results = Table(
     Column("edge", Float),
     Column("brier_score", Float),
     Column("correct", Integer),
+    Column("category", String),
+    Column("confidence_tier", String),
+)
+
+market_categories = Table(
+    "market_categories",
+    metadata,
+    Column("market_id", String, primary_key=True),
+    Column("category", String, nullable=False),
+    Column("classified_at", String),
+)
+
+calibration_profiles = Table(
+    "calibration_profiles",
+    metadata,
+    Column("id", String, primary_key=True),
+    Column("run_id", String, ForeignKey("backtest_runs.id")),
+    Column("category", String, nullable=False),
+    Column("offset", Float, nullable=False),
+    Column("sample_size", Integer),
+    Column("created_at", String),
+    UniqueConstraint("run_id", "category", name="uq_run_category"),
 )
 
 paper_orders = Table(
@@ -158,7 +203,22 @@ class SQLiteStore:
             conn.execute(text("PRAGMA journal_mode=WAL"))
             conn.execute(text("PRAGMA foreign_keys=ON"))
             conn.commit()
+        self._migrate_add_columns()
         logger.info("SQLiteStore initialized: %s (WAL mode)", db_path)
+
+    def _migrate_add_columns(self):
+        """Add new columns to existing tables (idempotent)."""
+        migrations = [
+            "ALTER TABLE backtest_results ADD COLUMN category TEXT",
+            "ALTER TABLE backtest_results ADD COLUMN confidence_tier TEXT",
+        ]
+        with self.engine.connect() as conn:
+            for sql in migrations:
+                try:
+                    conn.execute(text(sql))
+                except Exception:
+                    pass  # Column already exists
+            conn.commit()
 
     # ── Backtest Runs ────────────────────────────────────────────────
 
@@ -274,3 +334,68 @@ class SQLiteStore:
         with self.engine.connect() as conn:
             rows = conn.execute(paper_positions.select()).mappings().all()
         return [PaperPosition.from_dict(dict(r)) for r in rows]
+
+    # ── Market Categories ─────────────────────────────────────────
+
+    def get_market_category(self, market_id: str) -> Optional[str]:
+        """Return cached category for a market, or None."""
+        with self.engine.connect() as conn:
+            row = conn.execute(
+                market_categories.select().where(market_categories.c.market_id == market_id)
+            ).mappings().first()
+        return row["category"] if row else None
+
+    def save_market_category(self, market_id: str, category: str) -> None:
+        """Cache a market's category classification."""
+        with self.engine.connect() as conn:
+            conn.execute(
+                market_categories.insert().prefix_with("OR REPLACE"),
+                {
+                    "market_id": market_id,
+                    "category": category,
+                    "classified_at": datetime.now().isoformat(),
+                },
+            )
+            conn.commit()
+
+    # ── Calibration Profiles ──────────────────────────────────────
+
+    def save_calibration_profile(
+        self, run_id: str, category: str, offset: float, sample_size: int
+    ) -> None:
+        """Save a per-category calibration offset for a backtest run."""
+        with self.engine.connect() as conn:
+            conn.execute(
+                calibration_profiles.insert().prefix_with("OR REPLACE"),
+                {
+                    "id": f"cp_{uuid.uuid4().hex[:12]}",
+                    "run_id": run_id,
+                    "category": category,
+                    "offset": offset,
+                    "sample_size": sample_size,
+                    "created_at": datetime.now().isoformat(),
+                },
+            )
+            conn.commit()
+
+    def load_calibration_profiles(self, run_id: str) -> Dict[str, Dict[str, Any]]:
+        """Load all category offsets for a run. Returns {category: {offset, sample_size}}."""
+        with self.engine.connect() as conn:
+            rows = conn.execute(
+                calibration_profiles.select().where(calibration_profiles.c.run_id == run_id)
+            ).mappings().all()
+        return {
+            row["category"]: {"offset": row["offset"], "sample_size": row["sample_size"]}
+            for row in rows
+        }
+
+    def get_latest_completed_run_id(self) -> Optional[str]:
+        """Return the ID of the most recent COMPLETED backtest run, or None."""
+        with self.engine.connect() as conn:
+            row = conn.execute(
+                backtest_runs.select()
+                .where(backtest_runs.c.status == "COMPLETED")
+                .order_by(backtest_runs.c.started_at.desc())
+                .limit(1)
+            ).mappings().first()
+        return row["id"] if row else None

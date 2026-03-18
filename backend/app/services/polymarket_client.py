@@ -1,13 +1,15 @@
 """
-Polymarket client — fetches active markets from the Gamma API
+Polymarket client — fetches markets from the Gamma API
 """
 
+import time
 import requests
 from typing import List, Optional, Dict, Any
 
 from ..config import Config
 from ..models.prediction import PredictionMarket
 from ..utils.logger import get_logger
+from ..utils.retry import retry_with_backoff
 
 logger = get_logger('mirofish.polymarket')
 
@@ -18,6 +20,7 @@ class PolymarketClient:
     def __init__(self, base_url: Optional[str] = None):
         self.base_url = base_url or Config.POLYMARKET_GAMMA_URL
 
+    @retry_with_backoff(max_retries=3, exceptions=(requests.RequestException,))
     def fetch_active_markets(
         self,
         min_volume: float = 10000,
@@ -35,57 +38,137 @@ class PolymarketClient:
         Returns:
             List of PredictionMarket objects
         """
-        try:
-            params: Dict[str, Any] = {
-                "limit": min(limit, 100),
-                "active": True,
-                "closed": False,
-                "order": "volume",
-                "ascending": False,
-            }
+        params: Dict[str, Any] = {
+            "limit": min(limit, 100),
+            "active": True,
+            "closed": False,
+            "order": "volume",
+            "ascending": False,
+        }
 
-            url = f"{self.base_url}/markets"
-            logger.info(f"Fetching markets from {url}")
+        url = f"{self.base_url}/markets"
+        logger.info(f"Fetching markets from {url}")
 
-            resp = requests.get(url, params=params, timeout=30)
-            resp.raise_for_status()
-            raw_markets = resp.json()
+        resp = requests.get(url, params=params, timeout=30)
+        resp.raise_for_status()
+        raw_markets = resp.json()
 
-            if not isinstance(raw_markets, list):
-                logger.warning(f"Unexpected response format: {type(raw_markets)}")
-                return []
+        if not isinstance(raw_markets, list):
+            logger.warning(f"Unexpected response format: {type(raw_markets)}")
+            return []
 
-            markets = []
-            for item in raw_markets:
-                market = self._parse_market(item)
-                if market is None:
-                    continue
-                if market.volume < min_volume:
-                    continue
-                if search and search.lower() not in market.title.lower():
-                    continue
-                markets.append(market)
-                if len(markets) >= limit:
-                    break
+        markets = []
+        for item in raw_markets:
+            market = self._parse_market(item)
+            if market is None:
+                continue
+            if market.volume < min_volume:
+                continue
+            if search and search.lower() not in market.title.lower():
+                continue
+            markets.append(market)
+            if len(markets) >= limit:
+                break
 
-            logger.info(f"Fetched {len(markets)} markets (filtered from {len(raw_markets)})")
-            return markets
+        logger.info(f"Fetched {len(markets)} markets (filtered from {len(raw_markets)})")
+        return markets
 
-        except requests.RequestException as e:
-            logger.error(f"Failed to fetch markets: {e}")
-            raise
-
+    @retry_with_backoff(max_retries=3, exceptions=(requests.RequestException,))
     def get_market(self, condition_id: str) -> Optional[PredictionMarket]:
         """Fetch a single market by condition_id"""
-        try:
-            url = f"{self.base_url}/markets/{condition_id}"
-            resp = requests.get(url, timeout=30)
-            resp.raise_for_status()
-            data = resp.json()
-            return self._parse_market(data)
-        except requests.RequestException as e:
-            logger.error(f"Failed to fetch market {condition_id}: {e}")
+        url = f"{self.base_url}/markets/{condition_id}"
+        resp = requests.get(url, timeout=30)
+        resp.raise_for_status()
+        data = resp.json()
+        return self._parse_market(data)
+
+    def fetch_resolved_markets(self, limit: int = 200) -> List[PredictionMarket]:
+        """
+        Fetch resolved (closed) markets from Polymarket.
+
+        Args:
+            limit: Max markets to return
+
+        Returns:
+            List of PredictionMarket objects with actual_outcome set
+        """
+        markets = []
+        offset = 0
+        page_size = min(limit, 100)
+
+        while len(markets) < limit:
+            try:
+                params: Dict[str, Any] = {
+                    "limit": page_size,
+                    "closed": True,
+                    "order": "volume",
+                    "ascending": False,
+                    "offset": offset,
+                }
+
+                url = f"{self.base_url}/markets"
+                logger.info(f"Fetching resolved markets (offset={offset})")
+
+                resp = requests.get(url, params=params, timeout=30)
+                resp.raise_for_status()
+                raw_markets = resp.json()
+
+                if not isinstance(raw_markets, list) or len(raw_markets) == 0:
+                    break
+
+                for item in raw_markets:
+                    market = self._parse_resolved_market(item)
+                    if market is not None:
+                        markets.append(market)
+                        if len(markets) >= limit:
+                            break
+
+                offset += page_size
+
+                # Courtesy delay between paginated fetches
+                if len(markets) < limit and len(raw_markets) == page_size:
+                    time.sleep(1.0)
+                else:
+                    break
+
+            except requests.RequestException as e:
+                logger.error(f"Failed to fetch resolved markets at offset {offset}: {e}")
+                break
+
+        logger.info(f"Fetched {len(markets)} resolved markets")
+        return markets
+
+    def _parse_resolved_market(self, data: Dict[str, Any]) -> Optional[PredictionMarket]:
+        """Parse a resolved market, extracting actual outcome from resolution data."""
+        market = self._parse_market(data)
+        if market is None:
             return None
+
+        # Determine actual outcome from tokens or resolution data
+        tokens = data.get('tokens', [])
+        actual_outcome = None
+
+        if tokens:
+            for token in tokens:
+                winner = token.get('winner', False)
+                if winner:
+                    actual_outcome = token.get('outcome', '').upper()
+                    break
+
+        # If no winner token, check resolved status
+        if actual_outcome is None:
+            resolved = data.get('resolved', False)
+            resolution = data.get('resolution', '')
+            if resolved and resolution:
+                actual_outcome = resolution.upper()
+
+        if actual_outcome is None:
+            logger.debug(f"Skipping unresolved market: {market.title}")
+            return None
+
+        market.active = False
+        market.actual_outcome = actual_outcome
+        return market
 
     def _parse_market(self, data: Dict[str, Any]) -> Optional[PredictionMarket]:
         """Parse raw Gamma API response into PredictionMarket"""
@@ -106,7 +189,6 @@ class PolymarketClient:
                 raw_outcomes = data.get('outcomes', '["Yes", "No"]')
                 raw_prices = data.get('outcomePrices', '["0.5", "0.5"]')
 
-                # Parse if string, use directly if already list
                 if isinstance(raw_outcomes, str):
                     outcomes = _json.loads(raw_outcomes)
                 else:
@@ -132,5 +214,5 @@ class PolymarketClient:
                 active=data.get('active', True),
             )
         except (KeyError, ValueError, TypeError) as e:
-            logger.warning(f"Failed to parse market: {e}")
+            logger.warning(f"Failed to parse market data: {e} — raw keys: {list(data.keys())}")
             return None

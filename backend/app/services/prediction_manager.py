@@ -158,8 +158,16 @@ class PredictionManager:
                 market_probability=market_prob,
             )
 
-        # Calibration 1: Regress toward market price
-        MARKET_WEIGHT = Config.CALIBRATION_MARKET_REGRESSION
+        # Calibration 1: Adaptive market regression
+        # LLMs overestimate low-prob events (+6% bias at <10%) and underestimate
+        # high-prob events (-6% bias at >75%). Use stronger regression at extremes.
+        # Learned from 41 market analysis across 3 batches.
+        if market_prob < 0.10 or market_prob > 0.90:
+            MARKET_WEIGHT = 0.45  # Heavy regression for extreme-prob markets
+        elif market_prob < 0.20 or market_prob > 0.80:
+            MARKET_WEIGHT = 0.35
+        else:
+            MARKET_WEIGHT = 0.25  # Lighter regression for mid-range (more model trust)
         sim_prob = (1 - MARKET_WEIGHT) * raw_sim_prob + MARKET_WEIGHT * market_prob
 
         # Calibration 2: Short-dated dampening
